@@ -5,11 +5,13 @@
 {%- set sls_package_clean = tplroot ~ '.package.clean' %}
 {%- set sls_service_clean = tplroot ~ '.service.clean' %}
 {%- from tplroot ~ "/map.jinja" import apache with context %}
+{%- set disabled_modules = salt['pillar.get']('apache:modules:disabled', []) %}
 
 include:
   - {{ sls_service_clean }}
 
     {%- set existing_states = salt['cp.list_states']() %}
+    {% if disabled_modules is defined and disabled_modules|length %}
     {%- for module in salt['pillar.get']('apache:modules:disabled', []) %}
 apache-config-modules-{{ module }}-disable:
 
@@ -26,6 +28,7 @@ apache-config-modules-{{ module }}-disable:
     - onlyif:
       - test -d /etc/httpd
       - {{ grains.os_family in ('Arch',) and 'true' }} || (httpd -M 2> /dev/null |grep "[[:space:]]{{ module }}_module")
+
   file.absent:
     - name: /etc/httpd/conf.modules.d/*{{ module }}.conf
 
@@ -48,3 +51,11 @@ apache-config-modules-{{ module }}-disable:
       - sls: {{ sls_service_clean }}
 
     {%- endfor %}
+    {%- else %}
+no-modules-to-disable:
+  test.configurable_test_state:
+    - name: no modules to disable defined in pillar
+    - result: True
+    - changes: False
+    - comment: Cf https://github.com/saltstack/salt/issues/30971
+  {%- endif %}
